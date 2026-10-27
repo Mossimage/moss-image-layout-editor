@@ -1,8 +1,12 @@
 # moss-image-layout-editor
 
+[中文](README.zh-CN.md)
+
 Visual layout editor for [MOSS-Image](https://github.com/OpenMOSS/MOSS-Image) draft prompts. Arrange text, objects, and characters on a canvas, then copy a prompt compiled the same way as the official `compile_prompt.py`.
 
 The app is a static site. It does not call a generation API, a backend, or an analytics service.
+
+The interface is in English and Simplified Chinese. The header switches between EN and 中文. A link with `?lang=en` or `?lang=zh` selects that language; otherwise the editor uses the saved choice, then the browser language. Example captions stay as written in the draft. The compiled prompt and the exported JSON are not translated.
 
 ## Screenshot
 

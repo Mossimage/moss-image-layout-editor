@@ -14,7 +14,7 @@
   --object: #1f6a45;
   --character: #234e70;
   --shadow: 0 18px 50px rgba(48, 36, 18, 0.16);
-  font-family: "Figtree", "Segoe UI", sans-serif;
+  font-family: "Figtree", "WenQuanYi Micro Hei", "Segoe UI", sans-serif;
   font-size: 15px;
   line-height: 1.4;
   color: var(--ink);
@@ -144,6 +144,28 @@ textarea {
   border-color: #e7d3b0;
 }
 
+.lang-switch {
+  display: inline-flex;
+  border: 1px solid rgba(243, 236, 223, 0.35);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.lang-switch button {
+  border: none;
+  border-radius: 0;
+  padding: 6px 8px;
+}
+
+.lang-switch button + button {
+  border-left: 1px solid rgba(243, 236, 223, 0.35);
+}
+
+.lang-switch button.is-active {
+  background: #e7d3b0;
+  color: var(--ink);
+}
+
 .topbar input {
   background: #fbf7ef;
   color: var(--ink);
@@ -172,7 +194,7 @@ textarea {
 
 h2 {
   margin: 0;
-  font-family: "Fraunces", Georgia, serif;
+  font-family: "Fraunces", "WenQuanYi Micro Hei", Georgia, serif;
   font-size: 20px;
   font-weight: 600;
 }
@@ -185,6 +207,13 @@ h2 {
 }
 
 .field { display: flex; flex-direction: column; gap: 4px; }
+.field > .label-text {
+  font-size: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+}
+
 .field span,
 .inspector h3,
 .list-head {

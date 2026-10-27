@@ -6,7 +6,7 @@ import "@fontsource/fraunces/latin-600-italic.css";
 import "./styles.css";
 import { boxError, compilePrompt } from "./compile/compilePrompt.ts";
 import { parseDraftJson } from "./compile/json.ts";
-import { createExample, exampleLabels, type ExampleName } from "./examples.ts";
+import { createExample, type ExampleName } from "./examples.ts";
 import { History } from "./editor/history.ts";
 import {
   MAX_EDGE,
@@ -28,6 +28,7 @@ import {
   type Label,
 } from "./editor/model.ts";
 import { canvasSizeForImage, scaleBox, type CanvasSizeForImage } from "./editor/reference.ts";
+import { LANG_STORAGE_KEY, messages, parseLocale, pickLocale, t, type Locale, type MessageKey } from "./i18n.ts";
 
 const STORAGE_KEY = "moss-image-layout-editor/v1";
 const HANDLES: Handle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
@@ -52,13 +53,13 @@ root.innerHTML = `
   <header class="topbar">
     <div class="brand">
       <span class="brand-mark">Moss</span>
-      <span class="brand-sub">Layout</span>
+      <span class="brand-sub" data-i18n="brand.sub">Layout</span>
     </div>
     <div class="size">
-      <label>Width <input id="canvas-width" type="number" min="1" max="${MAX_EDGE}" step="16" /></label>
-      <label>Height <input id="canvas-height" type="number" min="1" max="${MAX_EDGE}" step="16" /></label>
-      <select id="size-preset" aria-label="Canvas size presets">
-        <option value="">Preset</option>
+      <label><span class="label-text" data-i18n="width">Width</span> <input id="canvas-width" type="number" min="1" max="${MAX_EDGE}" step="16" /></label>
+      <label><span class="label-text" data-i18n="height">Height</span> <input id="canvas-height" type="number" min="1" max="${MAX_EDGE}" step="16" /></label>
+      <select id="size-preset" data-i18n-aria="preset.aria" aria-label="Canvas size presets">
+        <option value="" data-i18n="preset.empty">Preset</option>
         <option value="1024x1024">1024 × 1024</option>
         <option value="1024x1536">1024 × 1536</option>
         <option value="1536x1024">1536 × 1024</option>
@@ -68,68 +69,72 @@ root.innerHTML = `
       </select>
     </div>
     <div class="top-actions">
-      <select id="example-select" aria-label="Example layouts">
-        <option value="">Examples</option>
-        <option value="poster">Poster</option>
-        <option value="menu">Menu</option>
-        <option value="comic">Comic</option>
-        <option value="cover">Book cover</option>
-        <option value="blank">Blank canvas</option>
+      <div class="lang-switch" role="group" data-i18n-aria="lang.group" aria-label="Language">
+        <button id="lang-en" type="button" data-lang="en" data-i18n="lang.en">EN</button>
+        <button id="lang-zh" type="button" data-lang="zh" data-i18n="lang.zh">中文</button>
+      </div>
+      <select id="example-select" data-i18n-aria="examples.aria" aria-label="Example layouts">
+        <option value="" data-i18n="examples.empty">Examples</option>
+        <option value="poster" data-i18n="example.poster">Poster</option>
+        <option value="menu" data-i18n="example.menu">Menu</option>
+        <option value="comic" data-i18n="example.comic">Comic</option>
+        <option value="cover" data-i18n="example.cover">Book cover</option>
+        <option value="blank" data-i18n="example.blank">Blank canvas</option>
       </select>
-      <button id="undo" type="button">Undo</button>
-      <button id="redo" type="button">Redo</button>
-      <button id="import-open" type="button">Import</button>
-      <button id="export-draft" type="button">Export draft</button>
-      <button id="copy-prompt" type="button" class="primary">Copy prompt</button>
+      <button id="undo" type="button" data-i18n="undo">Undo</button>
+      <button id="redo" type="button" data-i18n="redo">Redo</button>
+      <button id="import-open" type="button" data-i18n="import">Import</button>
+      <button id="export-draft" type="button" data-i18n="export">Export draft</button>
+      <button id="copy-prompt" type="button" class="primary" data-i18n="copyPrompt">Copy prompt</button>
     </div>
     <div id="status" class="status" role="status"></div>
   </header>
   <aside class="panel left">
     <section>
-      <h2>Summary</h2>
-      <label class="field">Caption
+      <h2 data-i18n="summary">Summary</h2>
+      <label class="field"><span class="label-text" data-i18n="caption">Caption</span>
         <textarea id="summary-caption" rows="5"></textarea>
       </label>
-      <label class="field">Canvas
+      <label class="field"><span class="label-text" data-i18n="canvas">Canvas</span>
         <select id="summary-canvas">
-          <option value="">Unspecified</option>
-          <option value="single">single</option>
-          <option value="multi_panel">multi_panel</option>
-          <option value="collage">collage</option>
+          <option value="" data-i18n="canvas.unspecified">Unspecified</option>
+          <option value="single" data-i18n="canvas.single">single</option>
+          <option value="multi_panel" data-i18n="canvas.multi_panel">multi_panel</option>
+          <option value="collage" data-i18n="canvas.collage">collage</option>
         </select>
       </label>
-      <div class="field"><span>Meta</span><div id="meta-chips" class="chips"></div></div>
-      <div class="field"><span>Palette</span><div id="summary-palette" class="chips"></div></div>
+      <div class="field"><span data-i18n="meta">Meta</span><div id="meta-chips" class="chips"></div></div>
+      <div class="field"><span data-i18n="palette">Palette</span><div id="summary-palette" class="chips"></div></div>
     </section>
     <section>
-      <div class="list-head">Items, back to front</div>
+      <div class="list-head" data-i18n="itemsHead">Items, back to front</div>
       <div id="item-list" class="item-list"></div>
       <div class="add-row">
-        <button id="add-object" type="button">Add object</button>
-        <button id="add-character" type="button">Add character</button>
-        <button id="add-text" type="button">Add text</button>
+        <button id="add-object" type="button" data-i18n="addObject">Add object</button>
+        <button id="add-character" type="button" data-i18n="addCharacter">Add character</button>
+        <button id="add-text" type="button" data-i18n="addText">Add text</button>
       </div>
     </section>
     <section id="inspector" class="inspector">
-      <h2>Box</h2>
-      <p id="inspector-empty" class="hint">Select a box, or drag on the canvas.</p>
+      <h2 data-i18n="box">Box</h2>
+      <p id="inspector-empty" class="hint" data-i18n="inspectorEmpty">Select a box, or drag on the canvas.</p>
       <div id="inspector-form">
-        <label class="field">Label
+        <label class="field"><span class="label-text" data-i18n="label">Label</span>
           <select id="item-label">
-            <option value="object">object</option>
-            <option value="character">character</option>
-            <option value="text">text</option>
+            <option value="object" data-i18n="label.object">object</option>
+            <option value="character" data-i18n="label.character">character</option>
+            <option value="text" data-i18n="label.text">text</option>
           </select>
         </label>
-        <label class="field">Caption
+        <label class="field"><span class="label-text" data-i18n="caption">Caption</span>
           <textarea id="item-caption" rows="4"></textarea>
         </label>
-        <label class="field">Literal text
-          <textarea id="item-text" rows="3" spellcheck="false" placeholder="Required for text boxes. Use real line breaks."></textarea>
+        <label class="field"><span class="label-text" data-i18n="literal">Literal text</span>
+          <textarea id="item-text" rows="3" spellcheck="false" data-i18n-placeholder="literal.placeholder" placeholder="Required for text boxes. Use real line breaks."></textarea>
         </label>
         <p id="text-hint" class="hint"></p>
-        <div class="field"><span>Tags</span><div id="item-tags" class="chips"></div></div>
-        <div class="field"><span>Palette</span><div id="item-palette" class="chips"></div></div>
+        <div class="field"><span data-i18n="tags">Tags</span><div id="item-tags" class="chips"></div></div>
+        <div class="field"><span data-i18n="palette">Palette</span><div id="item-palette" class="chips"></div></div>
         <div class="bbox-grid">
           <label>X <input id="box-x" type="number" step="1" /></label>
           <label>Y <input id="box-y" type="number" step="1" /></label>
@@ -138,41 +143,41 @@ root.innerHTML = `
         </div>
         <p id="box-compiled" class="hint"></p>
         <div class="inspector-actions">
-          <button id="send-back" type="button">Send backward</button>
-          <button id="bring-forward" type="button">Bring forward</button>
-          <button id="duplicate" type="button">Duplicate</button>
-          <button id="delete-item" type="button" class="danger">Delete</button>
+          <button id="send-back" type="button" data-i18n="sendBack">Send backward</button>
+          <button id="bring-forward" type="button" data-i18n="bringForward">Bring forward</button>
+          <button id="duplicate" type="button" data-i18n="duplicate">Duplicate</button>
+          <button id="delete-item" type="button" class="danger" data-i18n="delete">Delete</button>
         </div>
       </div>
     </section>
     <details class="shortcuts">
-      <summary>Shortcuts</summary>
-      <p class="hint">Drag empty canvas to draw. Shift draws text, Alt draws a character. Arrows nudge by 1px, Shift+arrows by 16. Delete removes. Ctrl+Z undoes, Ctrl+Shift+Z redoes, Ctrl+D duplicates. [ and ] reorder.</p>
+      <summary data-i18n="shortcuts">Shortcuts</summary>
+      <p class="hint" data-i18n="shortcuts.body">Drag empty canvas to draw. Shift draws text, Alt draws a character. Arrows nudge by 1px, Shift+arrows by 16. Delete removes. Ctrl+Z undoes, Ctrl+Shift+Z redoes, Ctrl+D duplicates. [ and ] reorder.</p>
     </details>
   </aside>
   <main class="center">
     <div class="toolbar">
-      <span class="hint">Boxes mark placement. They are not instructions to draw a frame.</span>
-      <label class="file-btn">Reference <input id="reference-file" type="file" accept="image/*" /></label>
-      <label class="check"><input id="snap" type="checkbox" /> Snap 16</label>
-      <label class="check"><input id="clamp" type="checkbox" checked /> Clamp</label>
+      <span class="hint" data-i18n="toolbar.hint">Boxes mark placement. They are not instructions to draw a frame.</span>
+      <label class="file-btn"><span data-i18n="reference">Reference</span> <input id="reference-file" type="file" accept="image/*" /></label>
+      <label class="check"><input id="snap" type="checkbox" /> <span data-i18n="snap">Snap 16</span></label>
+      <label class="check"><input id="clamp" type="checkbox" checked /> <span data-i18n="clamp">Clamp</span></label>
       <div class="zoom">
-        <button id="zoom-out" type="button" aria-label="Zoom out">−</button>
+        <button id="zoom-out" type="button" data-i18n-aria="zoomOut" aria-label="Zoom out">−</button>
         <span id="zoom-label">100%</span>
-        <button id="zoom-in" type="button" aria-label="Zoom in">+</button>
-        <button id="zoom-fit" type="button">Fit</button>
+        <button id="zoom-in" type="button" data-i18n-aria="zoomIn" aria-label="Zoom in">+</button>
+        <button id="zoom-fit" type="button" data-i18n="fit">Fit</button>
       </div>
     </div>
     <div id="reference-bar" class="reference-bar" hidden>
       <span id="reference-name" class="reference-name"></span>
-      <label class="check"><input id="reference-visible" type="checkbox" checked /> Show</label>
-      <label class="opacity">Opacity
+      <label class="check"><input id="reference-visible" type="checkbox" checked /> <span data-i18n="show">Show</span></label>
+      <label class="opacity"><span data-i18n="opacity">Opacity</span>
         <input id="reference-opacity" type="range" min="0" max="100" value="50" />
         <span id="reference-opacity-label">50%</span>
       </label>
-      <button id="reference-size" type="button">Use image size</button>
-      <button id="reference-remove" type="button">Remove</button>
-      <span class="hint">Not exported</span>
+      <button id="reference-size" type="button" data-i18n="useImageSize">Use image size</button>
+      <button id="reference-remove" type="button" data-i18n="remove">Remove</button>
+      <span class="hint" data-i18n="notExported">Not exported</span>
     </div>
     <div id="viewport" class="viewport">
       <div class="viewport-inner">
@@ -187,44 +192,44 @@ root.innerHTML = `
     </div>
   </main>
   <aside class="panel right">
-    <h2>Compiled prompt</h2>
+    <h2 data-i18n="compiled">Compiled prompt</h2>
     <p id="prompt-meta" class="hint"></p>
     <p id="prompt-error" class="error" hidden></p>
-    <textarea id="prompt-out" class="prompt-text" readonly spellcheck="false" aria-label="Compiled prompt"></textarea>
+    <textarea id="prompt-out" class="prompt-text" readonly spellcheck="false" data-i18n-aria="prompt.aria" aria-label="Compiled prompt"></textarea>
     <div class="row">
-      <button id="copy-prompt-side" type="button" class="primary">Copy prompt</button>
-      <button id="copy-draft" type="button">Copy draft JSON</button>
+      <button id="copy-prompt-side" type="button" class="primary" data-i18n="copyPrompt">Copy prompt</button>
+      <button id="copy-draft" type="button" data-i18n="copyDraft">Copy draft JSON</button>
     </div>
     <details>
-      <summary>Draft JSON</summary>
-      <textarea id="draft-out" readonly spellcheck="false" rows="12" aria-label="Draft JSON"></textarea>
+      <summary data-i18n="draftJson">Draft JSON</summary>
+      <textarea id="draft-out" readonly spellcheck="false" rows="12" data-i18n-aria="draft.aria" aria-label="Draft JSON"></textarea>
     </details>
   </aside>
   <dialog id="import-dialog">
-    <h2>Import JSON</h2>
-    <p id="import-help" class="hint">Paste a layout draft (<code>abs</code> / <code>xyxy</code>) or a compiled prompt (<code>abs_centralized</code> / <code>yxyx</code>).</p>
+    <h2 data-i18n="import.title">Import JSON</h2>
+    <p id="import-help" class="hint" data-i18n="import.help">Paste a layout draft (abs / xyxy) or a compiled prompt (abs_centralized / yxyx).</p>
     <p id="import-error" class="error" hidden></p>
-    <textarea id="import-text" spellcheck="false" placeholder='{"width": 1024, "height": 1024, ...}'></textarea>
+    <textarea id="import-text" spellcheck="false" data-i18n-placeholder="import.placeholder" placeholder='{"width": 1024, "height": 1024, ...}'></textarea>
     <div id="compiled-size" hidden>
-      <p class="hint">This file is a compiled prompt, so width and height are not in it. Enter the canvas those boxes were centered on. Reversing floor/ceil can grow an edge by up to a pixel.</p>
+      <p class="hint" data-i18n="import.compiledHint">This file is a compiled prompt, so width and height are not in it. Enter the canvas those boxes were centered on. Reversing floor/ceil can grow an edge by up to a pixel.</p>
       <div class="row">
-        <label>Width <input id="compiled-width" type="number" min="16" step="16" /></label>
-        <label>Height <input id="compiled-height" type="number" min="16" step="16" /></label>
+        <label><span class="label-text" data-i18n="width">Width</span> <input id="compiled-width" type="number" min="16" step="16" /></label>
+        <label><span class="label-text" data-i18n="height">Height</span> <input id="compiled-height" type="number" min="16" step="16" /></label>
       </div>
     </div>
     <div class="row">
-      <label class="file-btn">Choose file <input id="import-file" type="file" accept="application/json,.json" /></label>
-      <button id="import-cancel" type="button">Cancel</button>
-      <button id="import-apply" type="button" class="primary">Import</button>
+      <label class="file-btn"><span data-i18n="chooseFile">Choose file</span> <input id="import-file" type="file" accept="application/json,.json" /></label>
+      <button id="import-cancel" type="button" data-i18n="cancel">Cancel</button>
+      <button id="import-apply" type="button" class="primary" data-i18n="import">Import</button>
     </div>
   </dialog>
   <dialog id="reference-size-dialog">
-    <h2>Match canvas to image</h2>
+    <h2 data-i18n="referenceSize.title">Match canvas to image</h2>
     <p id="reference-size-copy" class="hint"></p>
     <div class="row">
-      <button id="reference-size-cancel" type="button">Cancel</button>
-      <button id="reference-size-keep" type="button">Keep box positions</button>
-      <button id="reference-size-scale" type="button" class="primary">Scale boxes</button>
+      <button id="reference-size-cancel" type="button" data-i18n="cancel">Cancel</button>
+      <button id="reference-size-keep" type="button" data-i18n="keepPositions">Keep box positions</button>
+      <button id="reference-size-scale" type="button" class="primary" data-i18n="scaleBoxes">Scale boxes</button>
     </div>
   </dialog>
 `;
@@ -304,6 +309,88 @@ interface ReferenceLayer {
 
 let state = loadInitial();
 const history = new History();
+const langParam = new URLSearchParams(location.search).get("lang");
+let locale: Locale = pickLocale(langParam, readLang(), navigator.language);
+if (parseLocale(langParam)) writeLang(locale);
+
+function readLang(): string | null {
+  try {
+    return localStorage.getItem(LANG_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeLang(next: Locale): void {
+  try {
+    localStorage.setItem(LANG_STORAGE_KEY, next);
+  } catch {
+    /* private mode can reject the write */
+  }
+}
+
+function tr(key: MessageKey, vars?: Record<string, string | number>): string {
+  return t(locale, key, vars);
+}
+
+function exampleMessage(name: ExampleName | "blank"): MessageKey {
+  switch (name) {
+    case "poster": return "example.poster";
+    case "menu": return "example.menu";
+    case "comic": return "example.comic";
+    case "cover": return "example.cover";
+    case "blank": return "example.blank";
+  }
+}
+
+function labelName(label: Label): string {
+  if (label === "object") return tr("label.object");
+  if (label === "character") return tr("label.character");
+  return tr("label.text");
+}
+
+function applyMessage(key: string, assign: (text: string) => void): void {
+  if (!(key in messages.en)) throw new Error(`Unknown message ${key}`);
+  assign(tr(key as MessageKey));
+}
+
+function applyI18n(): void {
+  document.documentElement.lang = locale === "zh" ? "zh-CN" : "en";
+  document.title = tr("doc.title");
+  document.querySelector('meta[name="description"]')?.setAttribute("content", tr("doc.description"));
+  for (const node of root!.querySelectorAll<HTMLElement>("[data-i18n]")) {
+    const key = node.dataset.i18n;
+    if (key) applyMessage(key, (text) => { node.textContent = text; });
+  }
+  for (const node of root!.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("[data-i18n-placeholder]")) {
+    const key = node.getAttribute("data-i18n-placeholder");
+    if (key) applyMessage(key, (text) => { node.placeholder = text; });
+  }
+  for (const node of root!.querySelectorAll<HTMLElement>("[data-i18n-aria]")) {
+    const key = node.getAttribute("data-i18n-aria");
+    if (key) applyMessage(key, (text) => { node.setAttribute("aria-label", text); });
+  }
+  if (!compiledSize.hidden) importHelp.textContent = tr("import.helpCompiled");
+  if (referenceSizeDialog.open && pendingImageSize && reference) {
+    referenceSizeCopy.textContent = imageSizeMessage(pendingImageSize, reference.naturalWidth, reference.naturalHeight);
+  }
+  for (const button of root!.querySelectorAll<HTMLButtonElement>("[data-lang]")) {
+    const active = button.dataset.lang === locale;
+    button.classList.toggle("is-active", active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+  }
+}
+
+function setLocale(next: Locale): void {
+  if (next === locale) return;
+  locale = next;
+  writeLang(next);
+  const url = new URL(location.href);
+  url.searchParams.set("lang", next);
+  window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+  applyI18n();
+  sync();
+}
 let reference: ReferenceLayer | null = null;
 let referenceLoad = 0;
 let pendingImageSize: CanvasSizeForImage | null = null;
@@ -406,7 +493,7 @@ function setIfIdle(input: HTMLInputElement | HTMLTextAreaElement | HTMLSelectEle
 function mountChips(container: HTMLElement, getValues: () => string[], setValues: (values: string[]) => void): () => void {
   return () => {
     const values = getValues();
-    const sig = JSON.stringify(values);
+    const sig = `${locale}:${JSON.stringify(values)}`;
     if (container.dataset.sig === sig) return;
     const wasFocused = container.contains(document.activeElement);
     container.dataset.sig = sig;
@@ -416,7 +503,7 @@ function mountChips(container: HTMLElement, getValues: () => string[], setValues
       chip.type = "button";
       chip.className = "chip";
       chip.textContent = value;
-      chip.setAttribute("aria-label", `Remove ${value}`);
+      chip.setAttribute("aria-label", tr("chip.remove", { value }));
       chip.addEventListener("click", () => {
         setValues(getValues().filter((_, chipIndex) => chipIndex !== index));
       });
@@ -424,8 +511,8 @@ function mountChips(container: HTMLElement, getValues: () => string[], setValues
     });
     const input = document.createElement("input");
     input.type = "text";
-    input.placeholder = "Add";
-    input.setAttribute("aria-label", "Add value");
+    input.placeholder = tr("chip.add");
+    input.setAttribute("aria-label", tr("chip.addAria"));
     input.spellcheck = false;
     input.addEventListener("keydown", (event) => {
       if (event.key === "Enter" || event.key === ",") {
@@ -501,7 +588,7 @@ function renderBoxes(): void {
     element.style.height = `${Math.max(0, y2 - y1)}px`;
     const label = document.createElement("span");
     label.className = "box-label";
-    label.textContent = item.label;
+    label.textContent = labelName(item.label);
     element.append(label);
     if (item.label === "text") {
       const text = document.createElement("div");
@@ -528,7 +615,7 @@ function renderBoxes(): void {
   if (state.items.length === 0 && gesture === null) {
     const hint = document.createElement("div");
     hint.className = "canvas-hint";
-    hint.textContent = "Drag to place a box. Hold Shift for text, Alt for a character.";
+    hint.textContent = tr("canvasHint");
     boxLayer.append(hint);
   }
 }
@@ -569,10 +656,10 @@ function renderList(): void {
     button.className = `item-row item-${item.label}`;
     if (item.id === state.selectedId) button.classList.add("is-selected");
     const title = document.createElement("strong");
-    title.textContent = `${index + 1}  ${item.label}`;
+    title.textContent = `${index + 1}  ${labelName(item.label)}`;
     const preview = document.createElement("span");
     const source = item.label === "text" && item.text ? item.text : item.caption;
-    preview.textContent = source.replace(/\s+/g, " ").slice(0, 72) || "Empty";
+    preview.textContent = source.replace(/\s+/g, " ").slice(0, 72) || tr("list.empty");
     button.append(title, preview);
     button.addEventListener("click", () => {
       state.selectedId = item.id;
@@ -590,15 +677,13 @@ function renderInspector(): void {
   setIfIdle(itemLabel, item.label);
   setIfIdle(itemCaption, item.caption);
   setIfIdle(itemText, item.text);
-  textHint.textContent = item.label === "text"
-    ? "This string is the text to render, including line breaks."
-    : "Optional on object and character boxes. Leave it empty to omit it.";
+  textHint.textContent = item.label === "text" ? tr("textHint.required") : tr("textHint.optional");
   setIfIdle(boxX, formatNumber(item.bbox[0]));
   setIfIdle(boxY, formatNumber(item.bbox[1]));
   setIfIdle(boxW, formatNumber(item.bbox[2] - item.bbox[0]));
   setIfIdle(boxH, formatNumber(item.bbox[3] - item.bbox[1]));
   const issue = boxError(item.bbox, state.width, state.height);
-  boxCompiled.textContent = issue ?? `Centered yxyx: ${centeredPreview(item.bbox)}`;
+  boxCompiled.textContent = issue ?? tr("centered", { box: centeredPreview(item.bbox) });
 }
 
 function centeredPreview(bbox: Box): string {
@@ -619,7 +704,7 @@ function centeredPreview(bbox: Box): string {
     const compiled = JSON.parse(compilePrompt(draft)) as { items: { bbox: number[] }[] };
     return `[${compiled.items[0]?.bbox.join(", ")}]`;
   } catch {
-    return "unavailable";
+    return tr("unavailable");
   }
 }
 
@@ -634,13 +719,19 @@ function renderOutput(): void {
     const prompt = compilePrompt(draft);
     promptOut.value = prompt;
     promptError.hidden = true;
-    promptMeta.textContent = `${state.width}×${state.height} · ${state.items.length} item${state.items.length === 1 ? "" : "s"}. Set that size in the image workflow. It is not part of the prompt.`;
+    const count = state.items.length;
+    promptMeta.textContent = tr("prompt.meta", {
+      width: state.width,
+      height: state.height,
+      count,
+      unit: tr(count === 1 ? "unit.one" : "unit.other"),
+    });
     for (const button of copyPromptButtons) button.disabled = false;
   } catch (error) {
     promptOut.value = "";
     promptError.hidden = false;
     promptError.textContent = error instanceof Error ? error.message : String(error);
-    promptMeta.textContent = "The draft is not ready to compile.";
+    promptMeta.textContent = tr("prompt.notReady");
     for (const button of copyPromptButtons) button.disabled = true;
   }
   undoButton.disabled = !history.canUndo;
@@ -873,7 +964,7 @@ function isImageFile(file: File): boolean {
 
 function loadReferenceFile(file: File): void {
   if (!isImageFile(file)) {
-    flash("Choose an image file.");
+    flash(tr("flash.chooseImage"));
     return;
   }
   const url = URL.createObjectURL(file);
@@ -886,7 +977,7 @@ function loadReferenceFile(file: File): void {
     }
     if (image.naturalWidth <= 0 || image.naturalHeight <= 0) {
       URL.revokeObjectURL(url);
-      flash("Could not read that image.");
+      flash(tr("flash.unreadable"));
       return;
     }
     const opacity = reference?.opacity ?? 0.5;
@@ -900,10 +991,10 @@ function loadReferenceFile(file: File): void {
       opacity,
     };
     fitReference();
-    flash("Reference image stays in this browser.");
+    flash(tr("flash.referenceLocal"));
   };
   image.onerror = () => {
-    if (token === referenceLoad) flash("Could not read that image.");
+    if (token === referenceLoad) flash(tr("flash.unreadable"));
     URL.revokeObjectURL(url);
   };
   image.src = url;
@@ -911,12 +1002,12 @@ function loadReferenceFile(file: File): void {
 
 function imageSizeMessage(size: CanvasSizeForImage, naturalWidth: number, naturalHeight: number): string {
   const fit = size.clamped
-    ? `The image is ${naturalWidth}×${naturalHeight} px. A side cannot be larger than ${MAX_EDGE}, so the canvas will be ${size.width}×${size.height}.`
-    : `Set the canvas to ${size.width}×${size.height}, the image’s pixel size.`;
+    ? tr("size.clamped", { naturalWidth, naturalHeight, max: MAX_EDGE, width: size.width, height: size.height })
+    : tr("size.exact", { width: size.width, height: size.height });
   const compiles = size.width % 16 === 0 && size.height % 16 === 0
-    ? "That size is a multiple of 16, so the draft can still compile."
-    : "The compiler only accepts width and height that are positive multiples of 16, so this size will not compile until you change it.";
-  return `${fit} ${compiles} Keep the boxes where they are, or scale them in proportion to the new canvas.`;
+    ? tr("size.compiles")
+    : tr("size.wontCompile");
+  return `${fit} ${compiles} ${tr("size.choice")}`;
 }
 
 function applyImageSize(scale: boolean): void {
@@ -938,11 +1029,11 @@ function applyImageSize(scale: boolean): void {
   zoomMode = "fit";
   sync();
   if (size.clamped) {
-    flash(`Canvas set to ${size.width}×${size.height}. The image is larger than ${MAX_EDGE} px on a side.`);
+    flash(tr("flash.canvasClamped", { width: size.width, height: size.height, max: MAX_EDGE }));
   } else if (size.width % 16 !== 0 || size.height % 16 !== 0) {
-    flash("Canvas matches the image. Width and height must be multiples of 16 before the draft will compile.");
+    flash(tr("flash.canvasMultiple"));
   } else {
-    flash(`Canvas set to ${size.width}×${size.height}.`);
+    flash(tr("flash.canvasSet", { width: size.width, height: size.height }));
   }
 }
 
@@ -1064,13 +1155,13 @@ function applyImport(): void {
       compiledSize.hidden = false;
       compiledWidth.value = String(state.width);
       compiledHeight.value = String(state.height);
-      importHelp.textContent = "Compiled prompt detected. Confirm the canvas size, then import again.";
+      importHelp.textContent = tr("import.helpCompiled");
       return;
     }
     try {
       replaceState(editorFromCompiled(value, Number(compiledWidth.value), Number(compiledHeight.value)));
       importDialog.close();
-      flash("Imported compiled prompt");
+      flash(tr("flash.importedCompiled"));
     } catch (error) {
       showImportError(error instanceof Error ? error.message : String(error));
     }
@@ -1080,7 +1171,7 @@ function applyImport(): void {
   try {
     replaceState(editorFromDraft(value));
     importDialog.close();
-    flash("Imported draft");
+    flash(tr("flash.importedDraft"));
   } catch (error) {
     showImportError(error instanceof Error ? error.message : String(error));
   }
@@ -1141,7 +1232,7 @@ exampleSelect.addEventListener("change", () => {
   exampleSelect.value = "";
   if (!value) return;
   replaceState(createExample(value));
-  flash(value === "blank" ? "Blank canvas" : exampleLabels[value]);
+  flash(tr(exampleMessage(value)));
 });
 
 $<HTMLButtonElement>("#add-object").addEventListener("click", () => addItem("object"));
@@ -1169,11 +1260,11 @@ redoButton.addEventListener("click", () => {
 for (const button of copyPromptButtons) {
   button.addEventListener("click", () => {
     const prompt = currentPrompt();
-    if (prompt) void copyText(prompt, "Copied prompt");
+    if (prompt) void copyText(prompt, tr("flash.copiedPrompt"));
   });
 }
 $<HTMLButtonElement>("#copy-draft").addEventListener("click", () => {
-  void copyText(formatDraft(state), "Copied draft");
+  void copyText(formatDraft(state), tr("flash.copiedDraft"));
 });
 $<HTMLButtonElement>("#export-draft").addEventListener("click", () => {
   const blob = new Blob([formatDraft(state)], { type: "application/json" });
@@ -1189,7 +1280,7 @@ $<HTMLButtonElement>("#import-open").addEventListener("click", () => {
   importError.hidden = true;
   compiledSize.hidden = true;
   importText.value = "";
-  importHelp.textContent = "Paste a layout draft (abs / xyxy) or a compiled prompt (abs_centralized / yxyx).";
+  importHelp.textContent = tr("import.help");
   importDialog.showModal();
 });
 $<HTMLButtonElement>("#import-cancel").addEventListener("click", () => importDialog.close());
@@ -1361,6 +1452,14 @@ window.addEventListener("resize", () => {
   }
 });
 
+for (const button of root.querySelectorAll<HTMLButtonElement>("[data-lang]")) {
+  button.addEventListener("click", () => {
+    const next = parseLocale(button.dataset.lang);
+    if (next) setLocale(next);
+  });
+}
+
+applyI18n();
 sync();
 requestAnimationFrame(() => {
   if (zoomMode === "fit") {
