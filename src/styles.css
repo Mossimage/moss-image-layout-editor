@@ -258,6 +258,41 @@ h2 {
 
 .toolbar label { display: flex; align-items: center; gap: 6px; font-size: 13px; }
 
+.reference-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 6px 12px;
+  background: #f6f1e6;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+
+.reference-bar[hidden] { display: none; }
+
+.reference-name {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.opacity { display: flex; align-items: center; gap: 6px; }
+.opacity input[type="range"] { width: 120px; accent-color: var(--moss); }
+.opacity span { min-width: 36px; font-variant-numeric: tabular-nums; }
+
+.file-btn {
+  display: inline-flex;
+  align-items: center;
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 8px;
+  cursor: pointer;
+}
+
 .check { display: flex; align-items: center; gap: 6px; }
 
 .zoom { margin-left: auto; display: flex; align-items: center; gap: 6px; }
@@ -268,6 +303,11 @@ h2 {
   flex: 1;
   min-height: 0;
   overflow: auto;
+}
+
+.viewport.is-file-drag {
+  outline: 3px dashed var(--moss);
+  outline-offset: -8px;
 }
 
 .viewport-inner {
@@ -298,6 +338,26 @@ h2 {
   background-size: 16px 16px;
   touch-action: none;
   user-select: none;
+}
+
+.reference-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.reference-layer[hidden] { display: none; }
+
+.box-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
 }
 
 .canvas-hint {

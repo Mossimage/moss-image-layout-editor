@@ -29,11 +29,21 @@ The draft schema is documented in the skill's [layout reference](https://github.
 - Text items include the literal `text`. Line breaks in that string are the intended line breaks.
 - `summary` holds `caption` and, when useful, `meta`, `canvas` (`single`, `multi_panel`, or `collage`), and `palette`.
 
-Changing the canvas size does not rescale boxes. Export writes this draft. The side panel shows the compiled prompt. The editor keeps canvases up to 4096 pixels on a side; the compiler itself does not have that limit.
+Changing the canvas size leaves boxes where they are. Export writes this draft. The side panel shows the compiled prompt. The editor keeps canvases up to 4096 pixels on a side; the compiler itself does not have that limit. Matching the canvas to a reference image scales boxes only when you choose Scale boxes.
 
 ## Examples
 
-The app includes four drafts written for this editor: a poster, a menu, a comic page, and a book cover. They are layout JSON in the official draft format so you can start from a composition. They are not sample model outputs.
+The app includes four drafts written for this editor: a poster, a menu, a comic page, and a book cover. They are layout JSON in the official draft format so you can start from a composition. They are not sample model outputs. None of them includes a reference image.
+
+## Reference image
+
+Load a local image as a layer under the boxes with the Reference button, or drop the file on the canvas. The image stays in the browser as an object URL. It is not uploaded, and the editor does not call a generation API.
+
+Show, hide, and the opacity slider change only that overlay. Remove drops it. Use image size sets the canvas to the image’s pixel size, capped at 4096 on the longer side. If boxes already exist, confirm whether to keep their positions or scale them in proportion to the new canvas. Otherwise the image is fit inside the current canvas, preserving its aspect ratio.
+
+The reference image is omitted from the exported draft and from the compiled prompt, so the prompt stays identical to the official compiler output.
+
+One use is to overlay an image you generated with MOSS-Image, adjust the boxes and text against it, then export a new draft to regenerate.
 
 ## Run, test, build
 

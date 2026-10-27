@@ -27,6 +27,7 @@ import {
   type Handle,
   type Label,
 } from "./editor/model.ts";
+import { canvasSizeForImage, scaleBox, type CanvasSizeForImage } from "./editor/reference.ts";
 
 const STORAGE_KEY = "moss-image-layout-editor/v1";
 const HANDLES: Handle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
@@ -152,6 +153,7 @@ root.innerHTML = `
   <main class="center">
     <div class="toolbar">
       <span class="hint">Boxes mark placement. They are not instructions to draw a frame.</span>
+      <label class="file-btn">Reference <input id="reference-file" type="file" accept="image/*" /></label>
       <label class="check"><input id="snap" type="checkbox" /> Snap 16</label>
       <label class="check"><input id="clamp" type="checkbox" checked /> Clamp</label>
       <div class="zoom">
@@ -161,10 +163,24 @@ root.innerHTML = `
         <button id="zoom-fit" type="button">Fit</button>
       </div>
     </div>
+    <div id="reference-bar" class="reference-bar" hidden>
+      <span id="reference-name" class="reference-name"></span>
+      <label class="check"><input id="reference-visible" type="checkbox" checked /> Show</label>
+      <label class="opacity">Opacity
+        <input id="reference-opacity" type="range" min="0" max="100" value="50" />
+        <span id="reference-opacity-label">50%</span>
+      </label>
+      <button id="reference-size" type="button">Use image size</button>
+      <button id="reference-remove" type="button">Remove</button>
+      <span class="hint">Not exported</span>
+    </div>
     <div id="viewport" class="viewport">
       <div class="viewport-inner">
         <div id="world" class="world">
-          <div id="canvas" class="canvas"></div>
+          <div id="canvas" class="canvas">
+            <img id="reference-image" class="reference-layer" alt="" hidden />
+            <div id="box-layer" class="box-layer"></div>
+          </div>
         </div>
       </div>
       <div id="hud" class="hud"></div>
@@ -202,6 +218,15 @@ root.innerHTML = `
       <button id="import-apply" type="button" class="primary">Import</button>
     </div>
   </dialog>
+  <dialog id="reference-size-dialog">
+    <h2>Match canvas to image</h2>
+    <p id="reference-size-copy" class="hint"></p>
+    <div class="row">
+      <button id="reference-size-cancel" type="button">Cancel</button>
+      <button id="reference-size-keep" type="button">Keep box positions</button>
+      <button id="reference-size-scale" type="button" class="primary">Scale boxes</button>
+    </div>
+  </dialog>
 `;
 
 const $ = <T extends Element>(selector: string) => {
@@ -236,6 +261,16 @@ const boxW = $<HTMLInputElement>("#box-w");
 const boxH = $<HTMLInputElement>("#box-h");
 const boxCompiled = $<HTMLElement>("#box-compiled");
 const canvas = $<HTMLElement>("#canvas");
+const boxLayer = $<HTMLElement>("#box-layer");
+const referenceImage = $<HTMLImageElement>("#reference-image");
+const referenceBar = $<HTMLElement>("#reference-bar");
+const referenceName = $<HTMLElement>("#reference-name");
+const referenceVisible = $<HTMLInputElement>("#reference-visible");
+const referenceOpacity = $<HTMLInputElement>("#reference-opacity");
+const referenceOpacityLabel = $<HTMLElement>("#reference-opacity-label");
+const referenceFile = $<HTMLInputElement>("#reference-file");
+const referenceSizeDialog = $<HTMLDialogElement>("#reference-size-dialog");
+const referenceSizeCopy = $<HTMLElement>("#reference-size-copy");
 const world = $<HTMLElement>("#world");
 const viewport = $<HTMLElement>("#viewport");
 const hud = $<HTMLElement>("#hud");
@@ -258,8 +293,20 @@ const compiledSize = $<HTMLElement>("#compiled-size");
 const compiledWidth = $<HTMLInputElement>("#compiled-width");
 const compiledHeight = $<HTMLInputElement>("#compiled-height");
 
+interface ReferenceLayer {
+  url: string;
+  name: string;
+  naturalWidth: number;
+  naturalHeight: number;
+  visible: boolean;
+  opacity: number;
+}
+
 let state = loadInitial();
 const history = new History();
+let reference: ReferenceLayer | null = null;
+let referenceLoad = 0;
+let pendingImageSize: CanvasSizeForImage | null = null;
 let zoom = 1;
 let zoomMode: "fit" | "manual" = "fit";
 let gesture: Gesture | null = null;
@@ -477,13 +524,41 @@ function renderBoxes(): void {
     }
     fragment.append(element);
   }
-  canvas.replaceChildren(fragment);
+  boxLayer.replaceChildren(fragment);
   if (state.items.length === 0 && gesture === null) {
     const hint = document.createElement("div");
     hint.className = "canvas-hint";
     hint.textContent = "Drag to place a box. Hold Shift for text, Alt for a character.";
-    canvas.append(hint);
+    boxLayer.append(hint);
   }
+}
+
+function fitReference(): void {
+  renderReference();
+  if (zoomMode === "fit") {
+    fitZoom();
+    layoutWorld();
+  }
+}
+
+function renderReference(): void {
+  referenceBar.hidden = reference === null;
+  if (!reference) {
+    referenceImage.hidden = true;
+    referenceImage.removeAttribute("src");
+    referenceName.textContent = "";
+    referenceName.removeAttribute("title");
+    return;
+  }
+  if (referenceImage.getAttribute("src") !== reference.url) referenceImage.src = reference.url;
+  referenceImage.hidden = !reference.visible;
+  referenceImage.style.opacity = String(reference.opacity);
+  referenceName.textContent = reference.name;
+  referenceName.title = reference.name;
+  referenceVisible.checked = reference.visible;
+  const percent = String(Math.round(reference.opacity * 100));
+  if (document.activeElement !== referenceOpacity) referenceOpacity.value = percent;
+  referenceOpacityLabel.textContent = `${referenceOpacity.value}%`;
 }
 
 function renderList(): void {
@@ -575,6 +650,7 @@ function renderOutput(): void {
 function sync(): void {
   if (zoomMode === "fit") fitZoom();
   layoutWorld();
+  renderReference();
   renderBoxes();
   renderList();
   setIfIdle(summaryCaption, state.summary.caption);
@@ -779,6 +855,122 @@ function readEdge(input: HTMLInputElement, fallback: number): number | null {
   if (!Number.isInteger(value) || value < 1 || value > MAX_EDGE) return null;
   if (value === fallback) return null;
   return value;
+}
+
+function clearReference(): void {
+  if (reference) URL.revokeObjectURL(reference.url);
+  reference = null;
+  referenceLoad += 1;
+  pendingImageSize = null;
+  if (referenceSizeDialog.open) referenceSizeDialog.close();
+  fitReference();
+}
+
+function isImageFile(file: File): boolean {
+  if (file.type.startsWith("image/")) return true;
+  return /\.(png|jpe?g|gif|webp|bmp|svg|avif)$/i.test(file.name);
+}
+
+function loadReferenceFile(file: File): void {
+  if (!isImageFile(file)) {
+    flash("Choose an image file.");
+    return;
+  }
+  const url = URL.createObjectURL(file);
+  const token = ++referenceLoad;
+  const image = new Image();
+  image.onload = () => {
+    if (token !== referenceLoad) {
+      URL.revokeObjectURL(url);
+      return;
+    }
+    if (image.naturalWidth <= 0 || image.naturalHeight <= 0) {
+      URL.revokeObjectURL(url);
+      flash("Could not read that image.");
+      return;
+    }
+    const opacity = reference?.opacity ?? 0.5;
+    if (reference) URL.revokeObjectURL(reference.url);
+    reference = {
+      url,
+      name: file.name || "reference",
+      naturalWidth: image.naturalWidth,
+      naturalHeight: image.naturalHeight,
+      visible: true,
+      opacity,
+    };
+    fitReference();
+    flash("Reference image stays in this browser.");
+  };
+  image.onerror = () => {
+    if (token === referenceLoad) flash("Could not read that image.");
+    URL.revokeObjectURL(url);
+  };
+  image.src = url;
+}
+
+function imageSizeMessage(size: CanvasSizeForImage, naturalWidth: number, naturalHeight: number): string {
+  const fit = size.clamped
+    ? `The image is ${naturalWidth}×${naturalHeight} px. A side cannot be larger than ${MAX_EDGE}, so the canvas will be ${size.width}×${size.height}.`
+    : `Set the canvas to ${size.width}×${size.height}, the image’s pixel size.`;
+  const compiles = size.width % 16 === 0 && size.height % 16 === 0
+    ? "That size is a multiple of 16, so the draft can still compile."
+    : "The compiler only accepts width and height that are positive multiples of 16, so this size will not compile until you change it.";
+  return `${fit} ${compiles} Keep the boxes where they are, or scale them in proportion to the new canvas.`;
+}
+
+function applyImageSize(scale: boolean): void {
+  const size = pendingImageSize;
+  const layer = reference;
+  pendingImageSize = null;
+  if (!size || !layer) return;
+  const fromWidth = state.width;
+  const fromHeight = state.height;
+  edit(() => {
+    if (scale) {
+      for (const item of state.items) {
+        item.bbox = scaleBox(item.bbox, fromWidth, fromHeight, size.width, size.height);
+      }
+    }
+    state.width = size.width;
+    state.height = size.height;
+  });
+  zoomMode = "fit";
+  sync();
+  if (size.clamped) {
+    flash(`Canvas set to ${size.width}×${size.height}. The image is larger than ${MAX_EDGE} px on a side.`);
+  } else if (size.width % 16 !== 0 || size.height % 16 !== 0) {
+    flash("Canvas matches the image. Width and height must be multiples of 16 before the draft will compile.");
+  } else {
+    flash(`Canvas set to ${size.width}×${size.height}.`);
+  }
+}
+
+function requestImageSize(): void {
+  if (!reference) return;
+  let size: CanvasSizeForImage;
+  try {
+    size = canvasSizeForImage(reference.naturalWidth, reference.naturalHeight);
+  } catch (error) {
+    flash(error instanceof Error ? error.message : String(error));
+    return;
+  }
+  pendingImageSize = size;
+  if (state.items.length === 0) {
+    applyImageSize(false);
+    return;
+  }
+  referenceSizeCopy.textContent = imageSizeMessage(size, reference.naturalWidth, reference.naturalHeight);
+  referenceSizeDialog.showModal();
+}
+
+function dragHasFiles(event: DragEvent): boolean {
+  return Boolean(event.dataTransfer && [...event.dataTransfer.types].includes("Files"));
+}
+
+function droppedFile(event: DragEvent): File | null {
+  if (!dragHasFiles(event)) return null;
+  return event.dataTransfer?.files[0] ?? null;
 }
 
 function replaceState(next: EditorState): void {
@@ -1010,6 +1202,72 @@ $<HTMLInputElement>("#import-file").addEventListener("change", async (event) => 
   applyImport();
 });
 
+referenceFile.addEventListener("change", () => {
+  const file = referenceFile.files?.[0];
+  referenceFile.value = "";
+  if (file) loadReferenceFile(file);
+});
+referenceVisible.addEventListener("change", () => {
+  if (!reference) return;
+  reference.visible = referenceVisible.checked;
+  renderReference();
+});
+referenceOpacity.addEventListener("input", () => {
+  if (!reference) return;
+  reference.opacity = Number(referenceOpacity.value) / 100;
+  referenceOpacityLabel.textContent = `${referenceOpacity.value}%`;
+  referenceImage.style.opacity = String(reference.opacity);
+});
+$<HTMLButtonElement>("#reference-size").addEventListener("click", requestImageSize);
+$<HTMLButtonElement>("#reference-remove").addEventListener("click", clearReference);
+$<HTMLButtonElement>("#reference-size-cancel").addEventListener("click", () => {
+  pendingImageSize = null;
+  referenceSizeDialog.close();
+});
+$<HTMLButtonElement>("#reference-size-keep").addEventListener("click", () => {
+  applyImageSize(false);
+  referenceSizeDialog.close();
+});
+$<HTMLButtonElement>("#reference-size-scale").addEventListener("click", () => {
+  applyImageSize(true);
+  referenceSizeDialog.close();
+});
+referenceSizeDialog.addEventListener("close", () => {
+  pendingImageSize = null;
+});
+viewport.addEventListener("dragenter", (event) => {
+  if (!dragHasFiles(event)) return;
+  event.preventDefault();
+  viewport.classList.add("is-file-drag");
+});
+viewport.addEventListener("dragover", (event) => {
+  if (!dragHasFiles(event)) return;
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+  viewport.classList.add("is-file-drag");
+});
+viewport.addEventListener("dragleave", (event) => {
+  const next = event.relatedTarget;
+  if (next instanceof Node && viewport.contains(next)) return;
+  viewport.classList.remove("is-file-drag");
+});
+viewport.addEventListener("drop", (event) => {
+  if (!dragHasFiles(event)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  viewport.classList.remove("is-file-drag");
+  const file = droppedFile(event);
+  if (file) loadReferenceFile(file);
+});
+window.addEventListener("dragover", (event) => {
+  if (dragHasFiles(event)) event.preventDefault();
+});
+window.addEventListener("drop", (event) => {
+  if (!dragHasFiles(event)) return;
+  event.preventDefault();
+  viewport.classList.remove("is-file-drag");
+});
+
 $<HTMLButtonElement>("#zoom-out").addEventListener("click", () => {
   zoomMode = "manual";
   zoom = Math.max(0.05, zoom / 1.1);
@@ -1042,7 +1300,7 @@ canvas.addEventListener("pointerleave", () => {
 });
 
 window.addEventListener("keydown", (event) => {
-  if (importDialog.open) return;
+  if (importDialog.open || referenceSizeDialog.open) return;
   const target = event.target;
   const typing = target instanceof HTMLElement && Boolean(target.closest("input, textarea, select"));
   if (typing) {
