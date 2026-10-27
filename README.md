@@ -1,6 +1,8 @@
 # moss-image-layout-editor
 
-[中文](README.zh-CN.md)
+[中文](README.zh-CN.md) · **[Live demo](https://moss-image-community.github.io/moss-image-layout-editor/)**
+
+A community project. Not affiliated with OpenMOSS.
 
 Visual layout editor for [MOSS-Image](https://github.com/OpenMOSS/MOSS-Image) draft prompts. Arrange text, objects, and characters on a canvas, then copy a prompt compiled the same way as the official `compile_prompt.py`.
 

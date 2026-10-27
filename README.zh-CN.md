@@ -1,6 +1,8 @@
 # moss-image-layout-editor
 
-[English](README.md)
+[English](README.md) · **[在线使用](https://moss-image-community.github.io/moss-image-layout-editor/?lang=zh)**
+
+社区项目，与 OpenMOSS 官方无关。
 
 给 [MOSS-Image](https://github.com/OpenMOSS/MOSS-Image) 布局草稿用的可视化编辑器。在画布上安排文字、物体和角色，再复制一份与官方 `compile_prompt.py` 同样方式编译出来的提示词。
 
