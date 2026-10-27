@@ -185,6 +185,7 @@ root.innerHTML = `
           <div id="canvas" class="canvas">
             <img id="reference-image" class="reference-layer" alt="" hidden />
             <div id="box-layer" class="box-layer"></div>
+            <textarea id="inline-editor" class="inline-editor" hidden spellcheck="false" data-i18n-aria="box.editorAria" aria-label="Edit box content"></textarea>
           </div>
         </div>
       </div>
@@ -267,6 +268,7 @@ const boxH = $<HTMLInputElement>("#box-h");
 const boxCompiled = $<HTMLElement>("#box-compiled");
 const canvas = $<HTMLElement>("#canvas");
 const boxLayer = $<HTMLElement>("#box-layer");
+const inlineEditor = $<HTMLTextAreaElement>("#inline-editor");
 const referenceImage = $<HTMLImageElement>("#reference-image");
 const referenceBar = $<HTMLElement>("#reference-bar");
 const referenceName = $<HTMLElement>("#reference-name");
@@ -399,6 +401,9 @@ let zoomMode: "fit" | "manual" = "fit";
 let gesture: Gesture | null = null;
 let typingBefore: EditorState | null = null;
 let saveTimer = 0;
+/** The box whose words are being edited on the canvas, if any. Text boxes edit `text`, others edit `caption`. */
+let editing: { id: string; field: "text" | "caption" } | null = null;
+let lastPress: { id: string; time: number } | null = null;
 
 function loadInitial(): EditorState {
   const param = new URLSearchParams(location.search).get("example");
@@ -567,7 +572,7 @@ function layoutWorld(): void {
 
 function previewFontSize(item: EditorItem): number {
   const width = Math.max(1, item.bbox[2] - item.bbox[0]);
-  const height = Math.max(1, item.bbox[3] - item.bbox[1] - 24);
+  const height = Math.max(1, item.bbox[3] - item.bbox[1] - 8);
   const lines = (item.text || " ").split("\n");
   const longest = Math.max(1, ...lines.map((line) => line.length));
   return Math.max(8, Math.min(height / lines.length * 0.72, (width / longest) * 1.55, 160));
@@ -586,11 +591,14 @@ function renderBoxes(): void {
     element.style.top = `${y1}px`;
     element.style.width = `${Math.max(0, x2 - x1)}px`;
     element.style.height = `${Math.max(0, y2 - y1)}px`;
+    element.title = tr("box.editHint");
     const label = document.createElement("span");
     label.className = "box-label";
     label.textContent = labelName(item.label);
     element.append(label);
-    if (item.label === "text") {
+    if (editing?.id === item.id) {
+      element.classList.add("is-editing");
+    } else if (item.label === "text") {
       const text = document.createElement("div");
       text.className = "box-text-body";
       text.textContent = item.text;
@@ -608,6 +616,7 @@ function renderBoxes(): void {
         node.className = `handle handle-${handle}`;
         element.append(node);
       }
+      if (gesture === null && editing === null) element.append(boxToolbar(item));
     }
     fragment.append(element);
   }
@@ -618,6 +627,80 @@ function renderBoxes(): void {
     hint.textContent = tr("canvasHint");
     boxLayer.append(hint);
   }
+}
+
+const ICONS = {
+  edit: '<path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/>',
+  duplicate: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',
+  delete: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
+};
+
+function toolButton(icon: keyof typeof ICONS, label: string, onClick: () => void, extraClass = ""): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = `box-tool ${extraClass}`.trim();
+  button.title = label;
+  button.setAttribute("aria-label", label);
+  button.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[icon]}</svg><span>${label}</span>`;
+  button.addEventListener("click", onClick);
+  return button;
+}
+
+/** Floating actions on the selected box. Sized in screen pixels, so it stays readable at any zoom. */
+function boxToolbar(item: EditorItem): HTMLElement {
+  const bar = document.createElement("div");
+  bar.className = "box-toolbar";
+  bar.setAttribute("role", "toolbar");
+  bar.setAttribute("aria-label", tr("box.toolbar"));
+  // Flip below the box when there is no room above it on screen.
+  if (item.bbox[1] * zoom < 44) bar.classList.add("is-below");
+  // Keep pointer presses here from starting a canvas move or draw.
+  bar.addEventListener("pointerdown", (event) => event.stopPropagation());
+  bar.addEventListener("dblclick", (event) => event.stopPropagation());
+  bar.append(
+    toolButton("edit", tr(item.label === "text" ? "box.editText" : "box.editCaption"), () => openEditor(item.id), "is-labelled"),
+    toolButton("duplicate", tr("duplicate"), duplicate),
+    toolButton("delete", tr("delete"), removeSelected, "is-danger"),
+  );
+  return bar;
+}
+
+function openEditor(id: string): void {
+  const item = state.items.find((entry) => entry.id === id);
+  if (!item) return;
+  commitTyping();
+  state.selectedId = id;
+  editing = { id, field: item.label === "text" ? "text" : "caption" };
+  inlineEditor.value = item[editing.field];
+  inlineEditor.hidden = false;
+  sync();
+  inlineEditor.focus();
+  inlineEditor.select();
+}
+
+function closeEditor(): void {
+  if (!editing) return;
+  editing = null;
+  inlineEditor.hidden = true;
+  commitTyping();
+  sync();
+}
+
+function positionEditor(): void {
+  if (!editing) return;
+  const item = state.items.find((entry) => entry.id === editing?.id);
+  if (!item) {
+    editing = null;
+    inlineEditor.hidden = true;
+    return;
+  }
+  const [x1, y1, x2, y2] = item.bbox;
+  inlineEditor.style.left = `${x1}px`;
+  inlineEditor.style.top = `${y1}px`;
+  inlineEditor.style.width = `${Math.max(1, x2 - x1)}px`;
+  inlineEditor.style.height = `${Math.max(1, y2 - y1)}px`;
+  inlineEditor.classList.toggle("is-text", editing.field === "text");
+  inlineEditor.style.fontSize = editing.field === "text" ? `${previewFontSize(item)}px` : "";
 }
 
 function fitReference(): void {
@@ -743,6 +826,7 @@ function sync(): void {
   layoutWorld();
   renderReference();
   renderBoxes();
+  positionEditor();
   renderList();
   setIfIdle(summaryCaption, state.summary.caption);
   setIfIdle(summaryCanvas, state.summary.canvas);
@@ -755,7 +839,7 @@ function sync(): void {
   scheduleSave();
 }
 
-function eventToCanvas(event: PointerEvent): { x: number; y: number } {
+function eventToCanvas(event: MouseEvent): { x: number; y: number } {
   const rect = canvas.getBoundingClientRect();
   return {
     x: ((event.clientX - rect.left) / rect.width) * state.width,
@@ -836,7 +920,10 @@ function finishGesture(): void {
       current.created = false;
     }
   }
-  if (signature(current.before) !== signature(state)) history.push(current.before);
+  if (signature(current.before) !== signature(state)) {
+    history.push(current.before);
+    lastPress = null;
+  }
   sync();
 }
 
@@ -865,6 +952,17 @@ function onPointerDown(event: PointerEvent): void {
     return;
   }
   if (id) {
+    // Two presses on the same box count as a double-click. The native dblclick is unreliable here
+    // because every press re-renders the box layer.
+    const now = performance.now();
+    if (lastPress && lastPress.id === id && now - lastPress.time < 450) {
+      lastPress = null;
+      canvas.releasePointerCapture(event.pointerId);
+      event.preventDefault();
+      window.setTimeout(() => openEditor(id), 0);
+      return;
+    }
+    lastPress = { id, time: now };
     state.selectedId = id;
     const item = selected();
     gesture = {
@@ -1383,6 +1481,22 @@ viewport.addEventListener("wheel", (event) => {
 }, { passive: false });
 
 canvas.addEventListener("pointerdown", onPointerDown);
+inlineEditor.addEventListener("pointerdown", (event) => event.stopPropagation());
+inlineEditor.addEventListener("dblclick", (event) => event.stopPropagation());
+inlineEditor.addEventListener("input", () => {
+  const item = state.items.find((entry) => entry.id === editing?.id);
+  if (!item || !editing) return;
+  const field = editing.field;
+  onType(() => { item[field] = inlineEditor.value; });
+});
+inlineEditor.addEventListener("keydown", (event) => {
+  // Enter keeps its line break; Ctrl/Cmd+Enter finishes like Escape.
+  if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+    event.preventDefault();
+    inlineEditor.blur();
+  }
+});
+inlineEditor.addEventListener("blur", closeEditor);
 canvas.addEventListener("pointermove", onPointerMove);
 canvas.addEventListener("pointerup", finishGesture);
 canvas.addEventListener("pointercancel", finishGesture);
@@ -1426,6 +1540,11 @@ window.addEventListener("keydown", (event) => {
   if (event.key === "Delete" || event.key === "Backspace") {
     event.preventDefault();
     removeSelected();
+    return;
+  }
+  if (event.key === "Enter" && state.selectedId) {
+    event.preventDefault();
+    openEditor(state.selectedId);
     return;
   }
   if (event.key === "[") reorder(-1);
