@@ -31,6 +31,7 @@ import { canvasSizeForImage, scaleBox, type CanvasSizeForImage } from "./editor/
 import { LANG_STORAGE_KEY, messages, parseLocale, pickLocale, t, type Locale, type MessageKey } from "./i18n.ts";
 
 const STORAGE_KEY = "moss-image-layout-editor/v1";
+const VIEW_STORAGE_KEY = "moss-image-layout-editor/prompt-view";
 const HANDLES: Handle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
 
 interface Gesture {
@@ -193,9 +194,16 @@ root.innerHTML = `
     </div>
   </main>
   <aside class="panel right">
-    <h2 data-i18n="compiled">Compiled prompt</h2>
+    <div class="panel-head">
+      <h2 data-i18n="compiled">Compiled prompt</h2>
+      <div class="view-switch" role="group" data-i18n-aria="view.aria" aria-label="Prompt view">
+        <button type="button" data-view="raw" data-i18n="view.raw">Raw</button>
+        <button type="button" data-view="pretty" data-i18n="view.pretty">Readable</button>
+      </div>
+    </div>
     <p id="prompt-meta" class="hint"></p>
     <p id="prompt-error" class="error" hidden></p>
+    <p id="prompt-view-hint" class="hint" data-i18n="view.hint" hidden>Readable view is for reading only.</p>
     <textarea id="prompt-out" class="prompt-text" readonly spellcheck="false" data-i18n-aria="prompt.aria" aria-label="Compiled prompt"></textarea>
     <div class="row">
       <button id="copy-prompt-side" type="button" class="primary" data-i18n="copyPrompt">Copy prompt</button>
@@ -287,6 +295,7 @@ const clampInput = $<HTMLInputElement>("#clamp");
 const promptOut = $<HTMLTextAreaElement>("#prompt-out");
 const promptError = $<HTMLElement>("#prompt-error");
 const promptMeta = $<HTMLElement>("#prompt-meta");
+const promptViewHint = $<HTMLElement>("#prompt-view-hint");
 const draftOut = $<HTMLTextAreaElement>("#draft-out");
 const copyPromptButtons = [
   $<HTMLButtonElement>("#copy-prompt"),
@@ -404,6 +413,36 @@ let saveTimer = 0;
 /** The box whose words are being edited on the canvas, if any. Text boxes edit `text`, others edit `caption`. */
 let editing: { id: string; field: "text" | "caption" } | null = null;
 let lastPress: { id: string; time: number } | null = null;
+let hoverId: string | null = null;
+let promptView: "raw" | "pretty" = readPromptView();
+
+function readPromptView(): "raw" | "pretty" {
+  try {
+    return localStorage.getItem(VIEW_STORAGE_KEY) === "pretty" ? "pretty" : "raw";
+  } catch {
+    return "raw";
+  }
+}
+
+/** Indented copy of the compiled prompt, for reading only. */
+function prettyPrompt(prompt: string): string {
+  try {
+    // Keep number arrays such as bbox on one line.
+    return JSON.stringify(JSON.parse(prompt), null, 2)
+      .replace(/\[\s+(-?[\d.e+-]+(?:,\s+-?[\d.e+-]+)*)\s+\]/g, (_, numbers: string) => `[${numbers.split(/,\s+/).join(", ")}]`);
+  } catch {
+    return prompt;
+  }
+}
+
+function setHover(id: string | null): void {
+  if (id === hoverId) return;
+  hoverId = id;
+  canvas.style.cursor = id ? "move" : "";
+  for (const element of boxLayer.querySelectorAll<HTMLElement>(".box")) {
+    element.classList.toggle("is-hover", element.dataset.id === id);
+  }
+}
 
 function loadInitial(): EditorState {
   const param = new URLSearchParams(location.search).get("example");
@@ -585,6 +624,7 @@ function renderBoxes(): void {
     element.className = `box box-${item.label}`;
     element.dataset.id = item.id;
     if (item.id === state.selectedId) element.classList.add("is-selected");
+    if (item.id === hoverId) element.classList.add("is-hover");
     if (boxError(item.bbox, state.width, state.height)) element.classList.add("is-invalid");
     const [x1, y1, x2, y2] = item.bbox;
     element.style.left = `${x1}px`;
@@ -800,7 +840,7 @@ function renderOutput(): void {
   setIfIdle(heightInput, String(state.height));
   try {
     const prompt = compilePrompt(draft);
-    promptOut.value = prompt;
+    promptOut.value = promptView === "pretty" ? prettyPrompt(prompt) : prompt;
     promptError.hidden = true;
     const count = state.items.length;
     promptMeta.textContent = tr("prompt.meta", {
@@ -816,6 +856,12 @@ function renderOutput(): void {
     promptError.textContent = error instanceof Error ? error.message : String(error);
     promptMeta.textContent = tr("prompt.notReady");
     for (const button of copyPromptButtons) button.disabled = true;
+  }
+  promptViewHint.hidden = promptView !== "pretty";
+  for (const button of root!.querySelectorAll<HTMLButtonElement>("[data-view]")) {
+    const active = button.dataset.view === promptView;
+    button.classList.toggle("is-active", active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
   }
   undoButton.disabled = !history.canUndo;
   redoButton.disabled = !history.canRedo;
@@ -993,6 +1039,7 @@ function onPointerDown(event: PointerEvent): void {
 function onPointerMove(event: PointerEvent): void {
   const point = eventToCanvas(event);
   hud.textContent = `${Math.round(point.x)}, ${Math.round(point.y)}`;
+  if (!gesture) setHover(hitHandle(point.x, point.y) ? state.selectedId : hitBox(point.x, point.y));
   if (!gesture || gesture.pointerId !== event.pointerId) return;
   const dx = point.x - gesture.startX;
   const dy = point.y - gesture.startY;
@@ -1501,6 +1548,7 @@ canvas.addEventListener("pointermove", onPointerMove);
 canvas.addEventListener("pointerup", finishGesture);
 canvas.addEventListener("pointercancel", finishGesture);
 canvas.addEventListener("pointerleave", () => {
+  setHover(null);
   if (!gesture) hud.textContent = "";
 });
 
@@ -1570,6 +1618,18 @@ window.addEventListener("resize", () => {
     layoutWorld();
   }
 });
+
+for (const button of root.querySelectorAll<HTMLButtonElement>("[data-view]")) {
+  button.addEventListener("click", () => {
+    promptView = button.dataset.view === "pretty" ? "pretty" : "raw";
+    try {
+      localStorage.setItem(VIEW_STORAGE_KEY, promptView);
+    } catch {
+      /* private mode can reject the write */
+    }
+    renderOutput();
+  });
+}
 
 for (const button of root.querySelectorAll<HTMLButtonElement>("[data-lang]")) {
   button.addEventListener("click", () => {

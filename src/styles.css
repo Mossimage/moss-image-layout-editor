@@ -420,7 +420,7 @@ h2 {
   box-shadow: 0 0 0 calc(var(--px) * 3) color-mix(in srgb, currentColor 22%, transparent);
 }
 .box.is-invalid { outline: calc(var(--px) * 2) dashed var(--danger); outline-offset: calc(var(--px) * -3); }
-.box.is-editing .box-label { opacity: 0.55; }
+
 
 .box-label {
   position: absolute;
@@ -437,8 +437,12 @@ h2 {
   pointer-events: none;
 }
 
-.box-label { color: var(--paper-2); }
-.box:not(.is-selected) .box-label { opacity: 0.8; }
+/* Labels only show on the box being pointed at or edited, so tightly stacked boxes don't cover each other. */
+.box-label { color: var(--paper-2); opacity: 0; transition: opacity 0.12s; }
+.box.is-selected .box-label,
+.box.is-hover .box-label,
+.box.is-editing .box-label { opacity: 1; }
+.box.is-hover:not(.is-selected) { border-width: calc(var(--px) * 2); }
 
 .box-text-body,
 .box-caption {
@@ -568,6 +572,30 @@ h2 {
   font-variant-numeric: tabular-nums;
   pointer-events: none;
 }
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.view-switch {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.view-switch button {
+  border: none;
+  border-radius: 0;
+  padding: 4px 9px;
+  font-size: 13px;
+}
+
+.view-switch button + button { border-left: 1px solid var(--line); }
+.view-switch button.is-active { background: var(--moss); color: #f6f1e6; }
 
 .prompt-text {
   flex: 1;
