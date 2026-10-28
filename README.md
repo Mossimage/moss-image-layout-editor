@@ -1,6 +1,6 @@
 # moss-image-layout-editor
 
-[中文](README.zh-CN.md) · **[Live demo](https://moss-image-community.github.io/moss-image-layout-editor/)**
+[中文](README.zh-CN.md) · **[Live demo](https://moss-image-community.github.io/moss-image-layout-editor/)** · [Also on Hugging Face Spaces](https://huggingface.co/spaces/ferry309/moss-image-layout-editor)
 
 A community project. Not affiliated with OpenMOSS.
 

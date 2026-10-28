@@ -1,6 +1,6 @@
 # moss-image-layout-editor
 
-[English](README.md) · **[在线使用](https://moss-image-community.github.io/moss-image-layout-editor/?lang=zh)**
+[English](README.md) · **[在线使用](https://moss-image-community.github.io/moss-image-layout-editor/?lang=zh)** · [也可以在 Hugging Face Spaces 上使用](https://huggingface.co/spaces/ferry309/moss-image-layout-editor)
 
 社区项目，与 OpenMOSS 官方无关。
 
